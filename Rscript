@@ -1,0 +1,151 @@
+#Install packages
+library("ggplot2")
+library("tidyverse")
+install.packages("janitor")
+library("janitor")
+
+#Load your data from txt folder
+proteinGroups <- read.table("D:/UCPH/M1/Palaeoproteomics/Data/2024_Data/Completed_runs/Semi_Specific/combined/txt/proteinGroups.txt")
+
+#Select desired columns
+
+proteinSmall <- proteinGroups %>% 
+  clean_names() %>% 
+  select(c(1, 2, 3, 4, 6, 7, 8, 9)) %>% 
+  arrange(razor_unique_peptides)
+
+#optional, set all names in lower case letters
+
+proteinGrP <- proteinGroups %>% 
+  clean_names()
+
+#Visualize your data frame 
+
+View(proteinGrP)
+colnames(proteinGrP)
+proteinSmall$majority_protein_i_ds
+
+# Create a new table with desired columns
+tableNew <- proteinGrP %>% 
+  select(c(fasta_headers, 
+           sequence_length,
+           peptides_dt1_jt,
+           unique_peptides_dt1_jt,
+           sequence_coverage_dt1_jt,)) %>% 
+  filter(unique_peptides_dt1_jt >0) #filter unique peptides =0 because were not even sure if they're in our sample
+
+# Create a new table containing the new column "total amino acid coverage"
+tableNewTot <- tableNew %>% 
+  mutate("total_amino_acid_coverage" = round(sequence_coverage_dt1_jt*sequence_length/100, digit=0))
+
+# Get rid of undesired data
+tableNames <- tableNewTot %>% 
+  filter(fasta_headers != ";",
+         fasta_headers != "",
+         fasta_headers != ";;;;;;;;",
+         fasta_headers != ";;")
+#Modify row names
+rownames(tableNames$fasta_headers) <- c("Serum albumin", "collagen alpha-1(I) chain",
+                                        "Alpha-2-HS-glycoprotein",
+                                        "collagen alpha-2(I) chain",
+                                        "MMP200",
+                                        "collagen alpha-1(I) chain",
+                                        "amelogenin",
+                                        "Serum albumin",
+                                        "collagen alpha-2(I) chain",
+                                        "MMP20",
+                                        "Ameloblastin",
+                                        "collagen alpha-1(I) chain",
+                                        "collagen alpha-1(I) chain",
+                                        "collagen alpha-1(I) chain",
+                                        "collagen alpha-2(I) chain",
+                                        "collagen alpha-1(I) chain",
+                                        "amelogenin",
+                                        "zinc finger")
+newrownames <- c("Serum albumin", "collagen alpha-1(I) chain",
+                 "Alpha-2-HS-glycoprotein",
+                 "collagen alpha-2(I) chain",
+                 "MMP200",
+                 "collagen alpha-1(I) chain",
+                 "amelogenin",
+                 "Serum albumin",
+                 "collagen alpha-2(I) chain",
+                 "MMP20",
+                 "Ameloblastin",
+                 "collagen alpha-1(I) chain",
+                 "collagen alpha-1(I) chain",
+                 "collagen alpha-1(I) chain",
+                 "collagen alpha-1(I) chain",
+                 "collagen alpha-2(I) chain",
+                 "collagen alpha-1(I) chain",
+                 "amelogenin",
+                 "zinc finger")
+rownames(tableNames$fasta_headers) <- newrownames
+tableNames$fasta_headers
+Species <- c("Equus asinus", "Equus asinus", "Equus caballus", "Equus asinus", "Equus asinus", "Mammut americanum", "Equus asinus","Equus caballus","Bos taurus", "White Rhino", "Equus caballus", "Tapirus terrestris", "Rattus norvegicus", "Mus musculus", "Macrauchenia sp", "Mus musculus", "Homo sapiens", "Equus asinus", "Ceratotherium simum" )
+tableName <- tableNames %>% 
+  mutate("Protein" = newrownames) %>% 
+  select(-fasta_headers) %>% 
+  mutate("Species" = Species)
+
+evidence <- read.table("D:/UCPH/M1/Palaeoproteomics/Data/2024_Data/Completed_runs/Semi_Specific/combined/txt/evidence.txt")
+evidenceFilt <- evidence %>% 
+  filter(!startsWith(Proteins, "CON_"),
+         Experiment == c("DT1_JT", "Blank_Gr4"))
+names(evidenceFilt)
+#extract experiment and length
+ExpLenght <- evidenceFilt %>% 
+  select(c(Experiment, Length))
+
+#Density plot for length
+ggplot(ExpLenght, aes(x = Length)) + geom_density(aes(colour = Experiment, 
+                                                      fill = Experiment,
+                                                      alpha=0.5))
+#Histogram plot for length
+ggplot(ExpLenght, aes(x = Length)) + geom_bar(aes(colour = Experiment, 
+                                                      fill = Experiment,
+                                                      alpha=0.5), position = "dodge")#plot to determine the age of the sample
+# More long peptides in blank than in the samples makes sense. The older, the shorter the peptides.
+
+#deamidation
+deamid <- evidenceFilt %>% 
+  mutate(count_n = str_count(Sequence, "N"), 
+         count_deam_n = str_count(Modified.sequence, "N\\("), 
+         total_n = count_n*MS.MS.count, 
+         total_n_deam = count_deam_n*MS.MS.count, 
+         ratio_n = (total_n_deam/total_n)*100,
+         count_q = str_count(Sequence, "Q"), 
+         count_deam_q = str_count(Modified.sequence, "Q\\("), 
+         total_q = count_q*MS.MS.count, 
+         total_q_deam = count_deam_q*MS.MS.count, 
+         ratio_q = (total_q_deam/total_q)*100
+         ) %>% 
+  select(c(Experiment,
+           Sequence, 
+           Modified.sequence, 
+           MS.MS.count, 
+           count_n, 
+           count_deam_n, 
+           total_n, 
+           total_n_deam, 
+           ratio_n,
+           count_q, 
+           count_deam_q, 
+           total_q, 
+           total_q_deam, 
+           ratio_q
+           ))
+# Create plot for deamidation
+deamid_plot <- deamid %>% 
+  select(Experiment, ratio_n, ratio_q) %>% 
+  pivot_longer(2:3, names_to = "type", values_to = "ratio_nq") %>% 
+  group_by(Experiment, type) %>% 
+  filter(!is.na(ratio_nq)) %>% 
+  summarise(mean = mean(ratio_nq), 
+            ymin = min(ratio_nq), 
+            ymax = max(ratio_nq))
+#Bar plot for deamidation
+deamid_plot %>%
+  ggplot(aes(x = type, y = mean, fill = Experiment)) +
+  geom_col(position = "dodge")
+
